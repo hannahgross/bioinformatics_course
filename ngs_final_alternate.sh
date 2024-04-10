@@ -1,6 +1,7 @@
+
 #!/bin/bash
 
-# M2305834 NGS pipeline 
+# M2305834 NGS pipeline
 
 # Setting up directories
 mkdir -p ~/final_ngs/dnaseq
@@ -109,19 +110,58 @@ mv NGS0001_trimmed_R_1U NGS0001_trimmed_R_1U.fastq.gz
 mv NGS0001_trimmed_R_2P NGS0001_trimmed_R_2P.fastq.gz
 mv NGS0001_trimmed_R_2U NGS0001_trimmed_R_2U.fastq.gz
 
-# Indexing reference genome
+# BWA indexing
 cd ~/final_ngs/dnaseq/data
 wget http://hgdownload.cse.ucsc.edu/goldenPath/hg19/bigZips/hg19.fa.gz
 mkdir -p ~/final_ngs/dnaseq/data/reference
 mv ~/final_ngs/dnaseq/data/hg19.fa.gz ~/final_ngs/dnaseq/data/reference/
 bwa index ~/final_ngs/dnaseq/data/reference/hg19.fa.gz
 
-# Variant calling with GATK
-cd ~/final_ngs/dnaseq/data/aligned_data
+# Aligning
+cd ~/final_ngs/dnaseq/data/trimmed_fastq
+mv NGS0001_trimmed_R_1P.fastq.gz NGS0001_trimmed_R_1P.fastq
+mv NGS0001_trimmed_R_2P.fastq.gz NGS0001_trimmed_R_2P.fastq
+mkdir -p ~/final_ngs/dnaseq/data/aligned_data
+bwa mem -t 4 -v 1 -R '@RG\tID:11V6WR1:111:D1375ACXX:1:1101:1671:2229\tSM:NGS0001\tPL:ILLUMINA\tLB:nextera-ngs0001\tDT:2024-04-05\tPU:HWI-D00119' \
+-I 250,50 ~/final_ngs/dnaseq/data/reference/hg19.fa.gz \
+~/final_ngs/dnaseq/data/trimmed_fastq/NGS0001_trimmed_R_1P.fastq \
+~/final_ngs/dnaseq/data/trimmed_fastq/NGS0001_trimmed_R_2P.fastq \
+> ~/final_ngs/dnaseq/data/aligned_data/NGS0001.sam
 
+# Convert SAM to BAM
+cd ~/final_ngs/dnaseq/data/aligned_data
+samtools view -h -b NGS0001.sam > NGS0001.bam
+samtools sort NGS0001.bam > NGS0001_sorted.bam
+samtools index NGS0001_sorted.bam
+
+# Mark duplicates
+picard MarkDuplicates I=NGS0001_sorted.bam O=NGS0001_sorted_marked.bam M=marked_dup_metrics.txt
+samtools index NGS0001_sorted_marked.bam
+
+# Filter on mapping quality
+samtools view -F 1796 -q 20 -o NGS0001_sorted_filtered.bam NGS0001_sorted_marked.bam
+samtools index NGS0001_sorted_filtered.bam
+
+# Flagstats
+samtools flagstat NGS0001_sorted.bam > NGS0001_flagstats.txt
+samtools idxstats NGS0001_sorted.bam > NGS0001_idxstats.txt
+samtools depth NGS0001_sorted.bam > NGS0001_coverage.txt
+
+# view summary results
+head NGS0001_flagstats.txt
+head  NGS0001_idxstats.txt
+head NGS0001_coverage.txt
+
+# Collect insert size metrics
+java -jar /home/ubuntu/anaconda3/pkgs/picard-2.18.29-0/share/picard-2.18.29-0/picard.jar CollectInsertSizeMetrics \
+  I=NGS0001_sorted.bam \
+  O=NGS0001_insert_metrics.txt \
+  H=NGS0001_insert_size_histogram.pdf
+
+# Variant calling with GATK -- new alternate part
 java -jar GenomeAnalysisTK.jar -T HaplotypeCaller -R ~/final_ngs/dnaseq/data/reference/hg19.fa \
-                                 -I NGS0001_sorted_filtered.bam \
-                                 -o NGS0001_gatk.vcf
+  -I NGS0001_sorted_filtered.bam \
+  -o NGS0001_gatk.vcf
 
 bgzip NGS0001_gatk.vcf
 tabix -p vcf NGS0001_gatk.vcf.gz
@@ -150,6 +190,7 @@ cd snpEff
 java -jar snpEff.jar download -v hg19
 java -Xmx4g -jar snpEff.jar eff -v -no-intergenic -i vcf -o vcf hg19 \
   ~/final_ngs/dnaseq/results/NGS0001_gatk.vcf.gz > ~/final_ngs/dnaseq/results/NGS0001_gatk_snpeff.vcf
+
 
 # Open resulting HTML file with FileZilla
 
