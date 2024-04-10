@@ -146,6 +146,13 @@ samtools flagstat NGS0001_sorted.bam > NGS0001_flagstats.txt
 samtools idxstats NGS0001_sorted.bam > NGS0001_idxstats.txt
 samtools depth NGS0001_sorted.bam > NGS0001_coverage.txt
 
+#view summary results
+
+head NGS0001_flagstats.txt
+head  NGS0001_idxstats.txt
+head NGS0001_coverage.txt
+
+
 # Collect insert size metrics
 java -jar /home/ubuntu/anaconda3/pkgs/picard-2.18.29-0/share/picard-2.18.29-0/picard.jar CollectInsertSizeMetrics \
   I=NGS0001_sorted.bam \
@@ -157,7 +164,9 @@ zcat ~/final_ngs/dnaseq/data/reference/hg19.fa.gz > ~/final_ngs/dnaseq/data/refe
 samtools faidx ~/final_ngs/dnaseq/data/reference/hg19.fa
 freebayes --bam ~/final_ngs/dnaseq/data/aligned_data/NGS0001_sorted_filtered.bam \
   --fasta-reference ~/final_ngs/dnaseq/data/reference/hg19.fa \
-  --vcf ~/final_ngs/dnaseq/results/NGS0001.vcf
+  --vcf ~/final_ngs/dnaseq/results/NGS0001.vcf \
+  -i "QUAL >= 20 && DP >= 10"
+  
 bgzip ~/final_ngs/dnaseq/results/NGS0001.vcf
 tabix -p vcf ~/final_ngs/dnaseq/results/NGS0001.vcf.gz
 
